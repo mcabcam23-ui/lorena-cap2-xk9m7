@@ -603,37 +603,3 @@ body.lightbox-open {
   background: rgba(255, 255, 255, 0.28);
   outline: none;
 }
-
-.lightbox__nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  width: 44px;
-  height: 44px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
-  font-size: 1.75rem;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s ease;
-}
-
-.lightbox__nav:hover,
-.lightbox__nav:focus-visible {
-  background: rgba(255, 255, 255, 0.28);
-  outline: none;
-}
-
-.lightbox__nav--prev {
-  left: max(0.5rem, env(safe-area-inset-left));
-}
-
-.lightbox__nav--next {
-  right: max(0.5rem, env(safe-area-inset-right));
-}
