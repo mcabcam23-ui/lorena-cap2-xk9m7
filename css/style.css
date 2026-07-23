@@ -806,11 +806,43 @@ body.lightbox-open {
   padding: 0.2rem 0.35rem;
 }
 
-.timeline__date[contenteditable="true"],
 .timeline__text[contenteditable="true"] {
   outline: 1px dashed rgba(196, 165, 116, 0.55);
   border-radius: 4px;
   padding: 0.1rem 0.25rem;
+}
+
+.timeline__date-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  margin-bottom: 0.35rem;
+}
+
+.timeline__date-input {
+  appearance: none;
+  border: 1px solid rgba(196, 165, 116, 0.55);
+  background: #fff;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  max-width: 100%;
+  color-scheme: light;
+}
+
+.timeline__date-input:focus {
+  outline: 2px solid rgba(156, 74, 90, 0.28);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.timeline__date-preview {
+  margin-bottom: 0;
 }
 
 .finale__cta {
