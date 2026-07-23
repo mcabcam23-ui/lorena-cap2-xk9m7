@@ -7,17 +7,9 @@ import {
 import {
   getFirestore,
   doc,
-  getDoc,
   setDoc,
   onSnapshot,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-import {
-  getStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js";
 
 const STORAGE_KEY = "lorena-ano3-v1";
 const DB_NAME = "lorena-ano3";
@@ -94,7 +86,6 @@ if (!firebaseConfig || !firebaseConfig.projectId) {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 const ano3Ref = doc(db, ...DOC_PATH);
 
 function setStatus(msg) {
@@ -330,39 +321,6 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
-function photoStorageRef(id) {
-  return ref(storage, "ano3/photos/" + id);
-}
-
-async function ensurePhotoLocal(id) {
-  const existing = await idbGet(id);
-  if (existing) return existing;
-  try {
-    const url = await getDownloadURL(photoStorageRef(id));
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    await idbPut(id, blob);
-    return blob;
-  } catch (_) {
-    return null;
-  }
-}
-
-async function uploadPhoto(id, blob) {
-  await uploadBytes(photoStorageRef(id), blob, {
-    contentType: blob.type || "image/jpeg",
-  });
-}
-
-async function deleteRemotePhoto(id) {
-  try {
-    await deleteObject(photoStorageRef(id));
-  } catch (_) {
-    /* already gone */
-  }
-}
-
 function renderLetter() {
   letterEl.innerHTML = state.letterHtml;
   letterEl.contentEditable = editing ? "true" : "false";
@@ -383,7 +341,7 @@ async function renderPhotos() {
 
   for (let i = 0; i < state.photoIds.length; i++) {
     const id = state.photoIds[i];
-    const blob = await ensurePhotoLocal(id);
+    const blob = await idbGet(id);
     if (!blob) continue;
 
     const item = document.createElement("div");
@@ -551,27 +509,10 @@ async function pushToCloud() {
   collectLocal();
   setStatus("Sincronizando…");
 
-  const remoteSnap = await getDoc(ano3Ref);
-  const remoteIds = remoteSnap.exists()
-    ? remoteSnap.data().photoIds || []
-    : [];
-
-  for (const id of state.photoIds) {
-    const blob = await idbGet(id);
-    if (blob) await uploadPhoto(id, blob);
-  }
-
-  for (const id of remoteIds) {
-    if (!state.photoIds.includes(id)) {
-      await deleteRemotePhoto(id);
-    }
-  }
-
   const updatedAt = new Date().toISOString();
   const payload = {
     letterHtml: state.letterHtml,
     moments: state.moments,
-    photoIds: state.photoIds,
     updatedAt,
   };
 
@@ -595,18 +536,12 @@ async function applyRemoteData(data) {
     if (typeof data.letterHtml === "string") state.letterHtml = data.letterHtml;
     state.moments = migrateMoments(data.moments);
     sortMoments();
-    state.photoIds = Array.isArray(data.photoIds) ? data.photoIds : [];
     state.updatedAt = data.updatedAt || "";
     lastRemoteUpdatedAt = state.updatedAt;
     saveMeta();
 
-    for (const id of state.photoIds) {
-      await ensurePhotoLocal(id);
-    }
-
     renderLetter();
     renderMoments();
-    await renderPhotos();
     setStatus("Actualizado desde la nube");
   } finally {
     applyingRemote = false;
