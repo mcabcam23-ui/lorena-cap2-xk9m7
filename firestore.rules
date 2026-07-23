@@ -10,6 +10,7 @@ rules_version = '2';
 //   - letterHtml: string (required, 1..50000)
 //   - moments: list (required, max 200) of maps { date: string, text: string }
 //   - updatedAt: string (required, ISO timestamp)
+//   - song: map (optional) { title, artist, preview, spotify, cover }
 // Photos stay local (no Storage on Spark plan).
 //
 // ===============================================================
@@ -20,9 +21,31 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isValidSong(s) {
+      return s is map
+        && s.keys().hasOnly(['title', 'artist', 'preview', 'spotify', 'cover'])
+        && s.title is string
+        && s.title.size() > 0
+        && s.title.size() <= 200
+        && s.artist is string
+        && s.artist.size() > 0
+        && s.artist.size() <= 200
+        && s.preview is string
+        && s.preview.size() > 0
+        && s.preview.size() <= 500
+        && s.spotify is string
+        && s.spotify.size() > 0
+        && s.spotify.size() <= 500
+        && s.cover is string
+        && s.cover.size() <= 500;
+    }
+
     function isValidAno3() {
       let data = request.resource.data;
-      return data.keys().hasOnly(['letterHtml', 'moments', 'updatedAt'])
+      return (
+          data.keys().hasOnly(['letterHtml', 'moments', 'updatedAt'])
+          || data.keys().hasOnly(['letterHtml', 'moments', 'updatedAt', 'song'])
+        )
         && data.letterHtml is string
         && data.letterHtml.size() > 0
         && data.letterHtml.size() <= 50000
@@ -30,7 +53,8 @@ service cloud.firestore {
         && data.moments.size() <= 200
         && data.updatedAt is string
         && data.updatedAt.size() >= 10
-        && data.updatedAt.size() <= 64;
+        && data.updatedAt.size() <= 64
+        && (!('song' in data) || isValidSong(data.song));
     }
 
     match /capitulos/{docId} {

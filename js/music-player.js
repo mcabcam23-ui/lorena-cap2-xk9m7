@@ -2,15 +2,21 @@
   const MAX_PREVIEW_MS = 30000;
   let activePlayer = null;
 
-  document.querySelectorAll(".music[data-preview]").forEach((block) => {
+  function bindMusicBlock(block) {
+    if (block.dataset.musicBound === "1") return;
+
     const previewUrl = block.dataset.preview;
     const spotifyUrl = block.dataset.spotify;
     if (!previewUrl || !spotifyUrl) return;
+
+    block.dataset.musicBound = "1";
 
     const audio = new Audio(previewUrl);
     const playBtn = block.querySelector(".music__play");
     const openArea = block.querySelector(".music__open");
     const art = block.querySelector(".music__art");
+    if (!playBtn || !openArea) return;
+
     let stopTimer = null;
     const player = { block, audio, playBtn };
 
@@ -61,7 +67,8 @@
 
     function openSpotify() {
       stop();
-      window.open(spotifyUrl, "_blank", "noopener,noreferrer");
+      const url = block.dataset.spotify;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
     }
 
     playBtn.addEventListener("click", (event) => {
@@ -72,11 +79,30 @@
 
     openArea.addEventListener("click", openSpotify);
 
-    art.addEventListener("click", (event) => {
-      if (event.target.closest(".music__play")) return;
-      openSpotify();
-    });
+    if (art) {
+      art.addEventListener("click", (event) => {
+        if (event.target.closest(".music__play")) return;
+        openSpotify();
+      });
+    }
 
     audio.addEventListener("ended", stop);
-  });
+  }
+
+  function bindAll(root) {
+    const scope = root || document;
+    scope.querySelectorAll(".music[data-preview]").forEach(bindMusicBlock);
+  }
+
+  window.bindMusicPlayers = bindAll;
+  window.resetMusicPlayer = function (block) {
+    if (!block) return;
+    delete block.dataset.musicBound;
+    block.classList.remove("is-playing");
+    const playBtn = block.querySelector(".music__play");
+    if (playBtn) playBtn.classList.remove("is-playing");
+    bindMusicBlock(block);
+  };
+
+  bindAll(document);
 })();

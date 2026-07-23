@@ -63,7 +63,19 @@ const btnImport = document.getElementById("btn-import");
 const btnImportLabel = document.getElementById("btn-import-label");
 const btnAddPhoto = document.getElementById("btn-add-photo");
 const btnAddMoment = document.getElementById("btn-add-moment");
+const btnChangeSong = document.getElementById("btn-change-song");
 const photoInput = document.getElementById("photo-input");
+const songPicker = document.getElementById("song-picker");
+const songSearch = document.getElementById("song-search");
+const songResults = document.getElementById("song-results");
+const songSearchHint = document.getElementById("song-search-hint");
+const musicBlock = document.getElementById("music-block");
+const musicCover = document.getElementById("music-cover");
+const musicTitle = document.getElementById("music-title");
+const musicEmpty = document.getElementById("music-empty");
+
+let songSearchTimer = null;
+let songSearchSeq = 0;
 
 let editing = false;
 let applyingRemote = false;
@@ -75,6 +87,7 @@ let state = {
   letterHtml: letterEl.innerHTML,
   moments: [],
   photoIds: [],
+  song: null,
   updatedAt: "",
 };
 
@@ -249,6 +262,7 @@ function loadMeta() {
     const data = JSON.parse(raw);
     if (data.letterHtml) state.letterHtml = data.letterHtml;
     if (Array.isArray(data.photoIds)) state.photoIds = data.photoIds;
+    if (data.song && typeof data.song === "object") state.song = normalizeSong(data.song);
     if (data.updatedAt) state.updatedAt = data.updatedAt;
     if (Array.isArray(data.moments)) {
       state.moments = migrateMoments(data.moments);
@@ -267,9 +281,21 @@ function saveMeta() {
       letterHtml: state.letterHtml,
       moments: state.moments,
       photoIds: state.photoIds,
+      song: state.song,
       updatedAt: state.updatedAt || new Date().toISOString(),
     })
   );
+}
+
+function normalizeSong(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const title = String(raw.title || "").trim();
+  const artist = String(raw.artist || "").trim();
+  const preview = String(raw.preview || "").trim();
+  const spotify = String(raw.spotify || "").trim();
+  const cover = String(raw.cover || "").trim();
+  if (!title || !artist || !preview || !spotify) return null;
+  return { title, artist, preview, spotify, cover };
 }
 
 function compressImage(file) {
@@ -373,6 +399,156 @@ async function renderPhotos() {
     }
 
     galleryEl.appendChild(item);
+  }
+}
+
+function renderMusic() {
+  const song = normalizeSong(state.song);
+  state.song = song;
+
+  const hasSong = Boolean(song);
+  musicEmpty.hidden = hasSong || editing;
+  musicBlock.hidden = !hasSong;
+
+  if (editing) {
+    songPicker.hidden = false;
+    btnChangeSong.hidden = false;
+    btnChangeSong.textContent = hasSong ? "Cambiar" : "Elegir";
+  } else {
+    songPicker.hidden = true;
+    btnChangeSong.hidden = true;
+    songResults.innerHTML = "";
+    if (songSearch) songSearch.value = "";
+  }
+
+  if (!hasSong) {
+    musicBlock.dataset.preview = "";
+    musicBlock.dataset.spotify = "";
+    musicTitle.textContent = "—";
+    musicCover.removeAttribute("src");
+    musicCover.alt = "";
+    return;
+  }
+
+  musicBlock.dataset.preview = song.preview;
+  musicBlock.dataset.spotify = song.spotify;
+  musicTitle.textContent = song.title + " — " + song.artist;
+  musicCover.src = song.cover || "";
+  musicCover.alt = "Portada de " + song.title;
+  musicEmpty.hidden = true;
+
+  if (typeof window.resetMusicPlayer === "function") {
+    window.resetMusicPlayer(musicBlock);
+  } else if (typeof window.bindMusicPlayers === "function") {
+    window.bindMusicPlayers(musicBlock.parentElement);
+  }
+}
+
+function itunesCover(url) {
+  if (!url) return "";
+  return String(url).replace("100x100bb", "600x600bb").replace("100x100", "600x600");
+}
+
+function spotifySearchUrl(title, artist) {
+  return (
+    "https://open.spotify.com/search/" +
+    encodeURIComponent(title + " " + artist)
+  );
+}
+
+function renderSongResults(tracks) {
+  songResults.innerHTML = "";
+  if (!tracks.length) {
+    songSearchHint.textContent = "No hay resultados. Prueba otro nombre.";
+    return;
+  }
+
+  songSearchHint.textContent = "Toca una canción para elegirla.";
+  tracks.forEach((track) => {
+    const li = document.createElement("li");
+    li.className = "song-picker__item";
+    li.setAttribute("role", "option");
+    li.tabIndex = 0;
+
+    const img = document.createElement("img");
+    img.className = "song-picker__cover";
+    img.src = itunesCover(track.artworkUrl100);
+    img.alt = "";
+
+    const meta = document.createElement("div");
+    meta.className = "song-picker__meta";
+
+    const title = document.createElement("p");
+    title.className = "song-picker__title";
+    title.textContent = track.trackName;
+
+    const artist = document.createElement("p");
+    artist.className = "song-picker__artist";
+    artist.textContent = track.artistName;
+
+    meta.appendChild(title);
+    meta.appendChild(artist);
+    li.appendChild(img);
+    li.appendChild(meta);
+
+    const pick = () => {
+      if (!track.previewUrl) {
+        setStatus("Esa canción no tiene preview");
+        return;
+      }
+      state.song = {
+        title: track.trackName,
+        artist: track.artistName,
+        preview: track.previewUrl,
+        spotify: spotifySearchUrl(track.trackName, track.artistName),
+        cover: itunesCover(track.artworkUrl100),
+      };
+      saveMeta();
+      songResults.innerHTML = "";
+      if (songSearch) songSearch.value = "";
+      songSearchHint.textContent = "Canción elegida. Pulsa Guardar para sincronizar.";
+      renderMusic();
+      setStatus("Canción elegida");
+    };
+
+    li.addEventListener("click", pick);
+    li.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        pick();
+      }
+    });
+
+    songResults.appendChild(li);
+  });
+}
+
+async function searchSongs(query) {
+  const q = String(query || "").trim();
+  if (q.length < 2) {
+    songResults.innerHTML = "";
+    songSearchHint.textContent = "Escribe al menos 2 letras.";
+    return;
+  }
+
+  const seq = ++songSearchSeq;
+  songSearchHint.textContent = "Buscando…";
+
+  try {
+    const url =
+      "https://itunes.apple.com/search?term=" +
+      encodeURIComponent(q) +
+      "&media=music&entity=song&limit=25&country=es";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("search failed");
+    const data = await res.json();
+    if (seq !== songSearchSeq) return;
+    const tracks = (data.results || []).filter((t) => t.previewUrl);
+    renderSongResults(tracks);
+  } catch (_) {
+    if (seq !== songSearchSeq) return;
+    songResults.innerHTML = "";
+    songSearchHint.textContent = "No se pudo buscar. Revisa la conexión.";
   }
 }
 
@@ -486,9 +662,11 @@ function setEditing(on) {
   btnImportLabel.hidden = !on;
   btnAddPhoto.hidden = !on;
   btnAddMoment.hidden = !on;
+  btnChangeSong.hidden = !on;
   renderLetter();
   renderMoments();
   renderPhotos();
+  renderMusic();
   setStatus(on ? "Modo edición" : cloudReady ? "Sincronizado" : "");
 }
 
@@ -515,6 +693,7 @@ async function pushToCloud() {
     moments: state.moments,
     updatedAt,
   };
+  if (state.song) payload.song = state.song;
 
   await setDoc(ano3Ref, payload);
   state.updatedAt = updatedAt;
@@ -536,12 +715,14 @@ async function applyRemoteData(data) {
     if (typeof data.letterHtml === "string") state.letterHtml = data.letterHtml;
     state.moments = migrateMoments(data.moments);
     sortMoments();
+    state.song = data.song ? normalizeSong(data.song) : null;
     state.updatedAt = data.updatedAt || "";
     lastRemoteUpdatedAt = state.updatedAt;
     saveMeta();
 
     renderLetter();
     renderMoments();
+    renderMusic();
     setStatus("Actualizado desde la nube");
   } finally {
     applyingRemote = false;
@@ -584,6 +765,7 @@ async function exportBackup() {
     letterHtml: state.letterHtml,
     moments: state.moments,
     photoIds: state.photoIds,
+    song: state.song,
     photos,
   };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
@@ -602,6 +784,7 @@ async function importBackup(file) {
   state.moments = migrateMoments(data.moments);
   sortMoments();
   state.photoIds = Array.isArray(data.photoIds) ? data.photoIds : [];
+  state.song = data.song ? normalizeSong(data.song) : state.song;
 
   if (data.photos && typeof data.photos === "object") {
     for (const id of state.photoIds) {
@@ -613,6 +796,7 @@ async function importBackup(file) {
   renderLetter();
   renderMoments();
   await renderPhotos();
+  renderMusic();
   setStatus("Importado — pulsa Guardar para sincronizar");
 }
 
@@ -672,7 +856,27 @@ photoInput.addEventListener("change", async () => {
 loadMeta();
 renderLetter();
 renderMoments();
+renderMusic();
 renderPhotos().catch(() => setStatus("Error al cargar fotos"));
+
+if (songSearch) {
+  songSearch.addEventListener("input", () => {
+    clearTimeout(songSearchTimer);
+    songSearchTimer = setTimeout(() => {
+      searchSongs(songSearch.value);
+    }, 350);
+  });
+}
+
+if (btnChangeSong) {
+  btnChangeSong.addEventListener("click", () => {
+    songPicker.hidden = false;
+    if (songSearch) {
+      songSearch.focus();
+      songSearch.select();
+    }
+  });
+}
 
 setStatus("Conectando…");
 onAuthStateChanged(auth, async (user) => {
