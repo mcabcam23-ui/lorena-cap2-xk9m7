@@ -753,6 +753,17 @@ body.lightbox-open {
   white-space: nowrap;
 }
 
+.section__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-shrink: 0;
+}
+
+.section__action--danger {
+  color: #8a3d3d;
+}
+
 .empty-hint {
   color: #a89e96;
   font-size: 0.9rem;

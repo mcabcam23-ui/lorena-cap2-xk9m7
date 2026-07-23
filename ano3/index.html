@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../css/style.css?v=7">
+  <link rel="stylesheet" href="../css/style.css?v=8">
 </head>
 <body class="ano3-page">
   <main class="page">
@@ -69,7 +69,10 @@
       <p class="section__label">Banda sonora</p>
       <div class="section__head">
         <h2 class="section__title" id="musica-titulo">Nuestra canción del año 3</h2>
-        <button type="button" class="section__action" id="btn-change-song" hidden>Cambiar</button>
+        <div class="section__actions">
+          <button type="button" class="section__action" id="btn-change-song" hidden>Cambiar</button>
+          <button type="button" class="section__action section__action--danger" id="btn-remove-song" hidden>Quitar</button>
+        </div>
       </div>
 
       <div class="song-picker" id="song-picker" hidden>
@@ -121,6 +124,6 @@
   <script src="../js/firebase-config.js"></script>
   <script src="../js/lightbox.js?v=5"></script>
   <script src="../js/music-player.js?v=2"></script>
-  <script type="module" src="../js/ano3-editor.js?v=5"></script>
+  <script type="module" src="../js/ano3-editor.js?v=6"></script>
 </body>
 </html>

@@ -64,6 +64,7 @@ const btnImportLabel = document.getElementById("btn-import-label");
 const btnAddPhoto = document.getElementById("btn-add-photo");
 const btnAddMoment = document.getElementById("btn-add-moment");
 const btnChangeSong = document.getElementById("btn-change-song");
+const btnRemoveSong = document.getElementById("btn-remove-song");
 const photoInput = document.getElementById("photo-input");
 const songPicker = document.getElementById("song-picker");
 const songSearch = document.getElementById("song-search");
@@ -414,9 +415,11 @@ function renderMusic() {
     songPicker.hidden = false;
     btnChangeSong.hidden = false;
     btnChangeSong.textContent = hasSong ? "Cambiar" : "Elegir";
+    if (btnRemoveSong) btnRemoveSong.hidden = !hasSong;
   } else {
     songPicker.hidden = true;
     btnChangeSong.hidden = true;
+    if (btnRemoveSong) btnRemoveSong.hidden = true;
     songResults.innerHTML = "";
     if (songSearch) songSearch.value = "";
   }
@@ -663,6 +666,7 @@ function setEditing(on) {
   btnAddPhoto.hidden = !on;
   btnAddMoment.hidden = !on;
   btnChangeSong.hidden = !on;
+  if (btnRemoveSong) btnRemoveSong.hidden = !on || !state.song;
   renderLetter();
   renderMoments();
   renderPhotos();
@@ -875,6 +879,20 @@ if (btnChangeSong) {
       songSearch.focus();
       songSearch.select();
     }
+  });
+}
+
+if (btnRemoveSong) {
+  btnRemoveSong.addEventListener("click", () => {
+    state.song = null;
+    saveMeta();
+    songResults.innerHTML = "";
+    if (songSearch) songSearch.value = "";
+    if (songSearchHint) {
+      songSearchHint.textContent = "Canción quitada. Pulsa Guardar para sincronizar.";
+    }
+    renderMusic();
+    setStatus("Canción quitada");
   });
 }
 
