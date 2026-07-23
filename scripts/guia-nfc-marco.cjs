@@ -1,60 +1,95 @@
 const path = require("path");
-const fs = require("fs");
 const sharp = require(path.join(process.env.TEMP, "sharp-lorena", "node_modules", "sharp"));
 
-const input = "d:/NFC/Lorena/images/marco/foto-marco-rgb-hd.jpg";
-const outGuide = "d:/NFC/Lorena/images/marco/foto-marco-guia-nfc.jpg";
-const outGuideHd = "d:/NFC/Lorena/images/marco/foto-marco-guia-nfc-hd.jpg";
+const cleanBase = "d:/NFC/Lorena/images/marco/foto-marco-rgb-limpia.jpg";
+const outPrint = "d:/NFC/Lorena/images/marco/foto-marco-rgb.jpg";
+const outPrintHd = "d:/NFC/Lorena/images/marco/foto-marco-rgb-hd.jpg";
+const outNew = "d:/NFC/Lorena/images/marco/foto-marco-rgb-marcada.jpg";
 
-async function addNfcMarkers(src, dest) {
-  const meta = await sharp(src).metadata();
-  const w = meta.width;
-  const h = meta.height;
+function cornerMarkersSvg(w, h) {
+  const pad = Math.round(w * 0.045);
+  const badgeW = Math.round(w * 0.19);
+  const badgeH = Math.round(badgeW * 0.38);
+  const fontSm = Math.round(badgeH * 0.32);
+  const fontLg = Math.round(badgeH * 0.52);
+  const heart = Math.round(badgeH * 0.42);
+  const arc = Math.round(w * 0.07);
 
-  // Posición: esquinas inferiores (reverso del marco / borde del paspartú)
-  const padX = Math.round(w * 0.08);
-  const padY = Math.round(h * 0.06);
-  const markerR = Math.round(w * 0.055);
+  const marker = (x, y, label, num, flip) => {
+    const tx = flip ? x - badgeW : x;
+    const cornerX = flip ? x + pad * 0.3 : x - pad * 0.3;
+    const cornerY = y - pad * 0.3;
+    const arcPath = flip
+      ? `M ${cornerX - arc} ${cornerY} Q ${cornerX} ${cornerY} ${cornerX} ${cornerY + arc}`
+      : `M ${cornerX + arc} ${cornerY} Q ${cornerX} ${cornerY} ${cornerX} ${cornerY + arc}`;
 
-  const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+    return `
+    <g transform="translate(${tx}, ${y - badgeH})">
+      <!-- halo suave -->
+      <rect x="0" y="0" width="${badgeW}" height="${badgeH}" rx="${badgeH / 2}"
+        fill="rgba(255,252,248,0.88)" stroke="rgba(196,165,116,0.85)" stroke-width="1.5"/>
+      <!-- brillo interior -->
+      <rect x="2" y="2" width="${badgeW - 4}" height="${badgeH - 4}" rx="${badgeH / 2 - 2}"
+        fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
+      <!-- corazón -->
+      <text x="${flip ? badgeW - pad * 0.9 : pad * 0.9}" y="${badgeH * 0.58}"
+        font-family="Georgia,serif" font-size="${heart}" fill="#9c4a5a">♥</text>
+      <!-- texto -->
+      <text x="${badgeW / 2 + (flip ? -pad * 0.4 : pad * 0.4)}" y="${badgeH * 0.42}"
+        text-anchor="middle" font-family="Georgia,serif" font-size="${fontSm}"
+        letter-spacing="0.12em" fill="#c4a574">AÑO</text>
+      <text x="${badgeW / 2 + (flip ? -pad * 0.4 : pad * 0.4)}" y="${badgeH * 0.82}"
+        text-anchor="middle" font-family="Georgia,serif" font-size="${fontLg}" font-weight="600"
+        fill="#9c4a5a">${num}</text>
+    </g>
+    <!-- arco decorativo esquina -->
+    <path d="${arcPath}" fill="none" stroke="rgba(196,165,116,0.75)" stroke-width="2" stroke-linecap="round"/>
+    <!-- punto guía -->
+    <circle cx="${flip ? x - pad * 1.1 : x + pad * 1.1}" cy="${y - pad * 0.55}"
+      r="${Math.round(pad * 0.22)}" fill="none" stroke="rgba(156,74,90,0.55)" stroke-width="1.5"
+      stroke-dasharray="2 3"/>
+    `;
+  };
+
+  const y = h - pad;
+  const leftX = pad;
+  const rightX = w - pad - badgeW;
+
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
     <defs>
-      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="#000" flood-opacity="0.45"/>
+      <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow dx="0" dy="1" stdDeviation="4" flood-color="#000" flood-opacity="0.25"/>
       </filter>
     </defs>
-
-    <!-- Año 1 — izquierda -->
-    <g filter="url(#shadow)" transform="translate(${padX + markerR}, ${h - padY - markerR})">
-      <circle r="${markerR}" fill="rgba(255,255,255,0.92)" stroke="#9c4a5a" stroke-width="3"/>
-      <circle r="${markerR - 8}" fill="none" stroke="#9c4a5a" stroke-width="2" stroke-dasharray="6 4" opacity="0.7"/>
-      <text y="-4" text-anchor="middle" font-family="Arial,sans-serif" font-size="${Math.round(markerR * 0.55)}" font-weight="700" fill="#9c4a5a">NFC</text>
-      <text y="${Math.round(markerR * 0.45)}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${Math.round(markerR * 0.38)}" fill="#6b5e57">Año 1</text>
+    <g filter="url(#glow)">
+      ${marker(leftX, y, "Año", "1", false)}
+      ${marker(rightX + badgeW, y, "Año", "2", true)}
     </g>
-
-    <!-- Año 2 — derecha -->
-    <g filter="url(#shadow)" transform="translate(${w - padX - markerR}, ${h - padY - markerR})">
-      <circle r="${markerR}" fill="rgba(255,255,255,0.92)" stroke="#9c4a5a" stroke-width="3"/>
-      <circle r="${markerR - 8}" fill="none" stroke="#9c4a5a" stroke-width="2" stroke-dasharray="6 4" opacity="0.7"/>
-      <text y="-4" text-anchor="middle" font-family="Arial,sans-serif" font-size="${Math.round(markerR * 0.55)}" font-weight="700" fill="#9c4a5a">NFC</text>
-      <text y="${Math.round(markerR * 0.45)}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${Math.round(markerR * 0.38)}" fill="#6b5e57">Año 2</text>
-    </g>
-
-    <!-- Flechas desde el borde -->
-    <line x1="${padX}" y1="${h - padY - markerR}" x2="${padX + markerR * 0.4}" y2="${h - padY - markerR}"
-      stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-dasharray="4 3"/>
-    <line x1="${w - padX}" y1="${h - padY - markerR}" x2="${w - padX - markerR * 0.4}" y2="${h - padY - markerR}"
-      stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-dasharray="4 3"/>
   </svg>`);
+}
 
-  await sharp(src).composite([{ input: svg, blend: "over" }]).jpeg({ quality: 96 }).toFile(dest);
-  console.log("Saved:", dest, w + "x" + h);
+const fs = require("fs");
+
+async function addMarkers(src, dest) {
+  const meta = await sharp(src).metadata();
+  const svg = cornerMarkersSvg(meta.width, meta.height);
+  const tmp = path.join(process.env.TEMP, "marco-marked-" + Date.now() + ".jpg");
+  await sharp(src).composite([{ input: svg, blend: "over" }]).jpeg({ quality: 96 }).toFile(tmp);
+  fs.copyFileSync(tmp, dest);
+  fs.unlinkSync(tmp);
+  console.log("Saved:", dest);
 }
 
 async function main() {
-  await addNfcMarkers("d:/NFC/Lorena/images/marco/foto-marco-rgb.jpg", outGuide.replace("-hd", "").replace("guia-nfc.jpg", "guia-nfc.jpg"));
-  await addNfcMarkers(input, outGuideHd);
+  if (!fs.existsSync(cleanBase)) {
+    await sharp("d:/NFC/Lorena/images/marco/foto-marco-rgb.jpg").toFile(cleanBase);
+  }
 
-  // Guía reverso del marco (vista esquemática)
+  await addMarkers(cleanBase, outNew);
+  await sharp(outNew).resize(1152, 2048, { kernel: "lanczos3" }).jpeg({ quality: 96 }).toFile(outPrintHd);
+  await sharp(outNew).jpeg({ quality: 96 }).toFile(outPrint);
+
+  // Guía reverso (solo para montaje, sin texto NFC)
   const frameW = 800;
   const frameH = 1200;
   const margin = 48;
@@ -69,29 +104,25 @@ async function main() {
   }
   const photoX = (frameW - photoW) / 2;
   const photoY = margin + 20;
-  const nfcY = photoY + photoH + 45;
+  const tagY = photoY + photoH + 45;
 
   const diagram = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${frameW}" height="${frameH}">
     <rect width="100%" height="100%" fill="#2a221c"/>
-    <text x="${frameW/2}" y="32" text-anchor="middle" fill="#c4a574" font-family="Arial,sans-serif" font-size="16" font-weight="600">REVERSO DEL MARCO</text>
+    <text x="${frameW/2}" y="32" text-anchor="middle" fill="#c4a574" font-family="Georgia,serif" font-size="16">Reverso del marco</text>
     <rect x="${photoX}" y="${photoY}" width="${photoW}" height="${photoH}" rx="4" fill="#1a1a1a" stroke="#5a4a3a" stroke-width="2"/>
-    <text x="${frameW/2}" y="${nfcY - 18}" text-anchor="middle" fill="#aaa" font-family="Arial,sans-serif" font-size="13">Pega las pegatinas NFC aquí ↓</text>
-
-    <g transform="translate(${photoX + 60}, ${nfcY})">
-      <rect x="-52" y="-24" width="104" height="48" rx="24" fill="#fff" stroke="#9c4a5a" stroke-width="2"/>
-      <text y="6" text-anchor="middle" fill="#9c4a5a" font-family="Arial,sans-serif" font-size="14" font-weight="700">NFC Año 1</text>
+    <text x="${frameW/2}" y="${tagY - 18}" text-anchor="middle" fill="#aaa" font-family="Arial,sans-serif" font-size="13">Pegatinas alineadas con las marcas ↓</text>
+    <g transform="translate(${photoX + 55}, ${tagY})">
+      <rect x="-46" y="-20" width="92" height="40" rx="20" fill="#fff" stroke="#9c4a5a" stroke-width="1.5"/>
+      <text y="5" text-anchor="middle" fill="#9c4a5a" font-family="Georgia,serif" font-size="14">♥ Año 1</text>
     </g>
-    <g transform="translate(${photoX + photoW - 60}, ${nfcY})">
-      <rect x="-52" y="-24" width="104" height="48" rx="24" fill="#fff" stroke="#9c4a5a" stroke-width="2"/>
-      <text y="6" text-anchor="middle" fill="#9c4a5a" font-family="Arial,sans-serif" font-size="14" font-weight="700">NFC Año 2</text>
+    <g transform="translate(${photoX + photoW - 55}, ${tagY})">
+      <rect x="-46" y="-20" width="92" height="40" rx="20" fill="#fff" stroke="#9c4a5a" stroke-width="1.5"/>
+      <text y="5" text-anchor="middle" fill="#9c4a5a" font-family="Georgia,serif" font-size="14">♥ Año 2</text>
     </g>
-
-    <line x1="${photoX + 60}" y1="${photoY + photoH + 8}" x2="${photoX + 60}" y2="${nfcY - 26}" stroke="#9c4a5a" stroke-width="2" stroke-dasharray="5 4"/>
-    <line x1="${photoX + photoW - 60}" y1="${photoY + photoH + 8}" x2="${photoX + photoW - 60}" y2="${nfcY - 26}" stroke="#9c4a5a" stroke-width="2" stroke-dasharray="5 4"/>
   </svg>`);
 
   await sharp(diagram).jpeg({ quality: 92 }).toFile("d:/NFC/Lorena/images/marco/guia-reverso-marco.jpg");
-  console.log("Saved diagram");
+  console.log("Done");
 }
 
 main().catch(console.error);
