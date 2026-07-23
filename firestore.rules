@@ -1,0 +1,50 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: capitulos
+// Document ID: ano3
+// Fields:
+//   - letterHtml: string (required, 1..50000) - HTML de la carta
+//   - moments: list (required, max 200) of maps { date: string, text: string }
+//   - photoIds: list of string (required, max 100)
+//   - updatedAt: string (required, ISO timestamp)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidAno3() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['letterHtml', 'moments', 'photoIds', 'updatedAt'])
+        && data.letterHtml is string
+        && data.letterHtml.size() > 0
+        && data.letterHtml.size() <= 50000
+        && data.moments is list
+        && data.moments.size() <= 200
+        && data.photoIds is list
+        && data.photoIds.size() <= 100
+        && data.updatedAt is string
+        && data.updatedAt.size() >= 10
+        && data.updatedAt.size() <= 64;
+    }
+
+    match /capitulos/{docId} {
+      allow read: if isAuthenticated() && docId == 'ano3';
+      allow create, update: if isAuthenticated()
+        && docId == 'ano3'
+        && isValidAno3();
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
