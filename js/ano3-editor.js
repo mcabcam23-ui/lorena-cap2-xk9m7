@@ -7,6 +7,7 @@ import {
 import {
   getFirestore,
   doc,
+  getDoc,
   setDoc,
   onSnapshot,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -81,6 +82,7 @@ let songSearchSeq = 0;
 let editing = false;
 let applyingRemote = false;
 let lastRemoteUpdatedAt = "";
+let pendingRemote = null;
 let cloudReady = false;
 let unsubSnapshot = null;
 
@@ -671,13 +673,23 @@ function setEditing(on) {
   renderMoments();
   renderPhotos();
   renderMusic();
-  setStatus(on ? "Modo edición" : cloudReady ? "Sincronizado" : "");
+
+  if (!on && pendingRemote) {
+    const queued = pendingRemote;
+    pendingRemote = null;
+    applyRemoteData(queued, true)
+      .then(() => setStatus("Cambios del otro móvil aplicados"))
+      .catch(() => setStatus(cloudReady ? "Sincronizado" : ""));
+    return;
+  }
+
+  setStatus(on ? "Modo edición — pulsa Guardar para enviar" : cloudReady ? "Sincronizado" : "");
 }
 
 function collectLocal() {
   state.letterHtml = letterEl.innerHTML;
   state.moments = state.moments.map((m) => ({
-    date: isIsoDate(m.date) ? m.date : parseFlexibleDate(m.date) || m.date || "",
+    date: isIsoDate(m.date) ? m.date : parseFlexibleDate(m.date) || "",
     text:
       (m.text || "").trim() === "Escribe el momento…"
         ? ""
@@ -686,15 +698,35 @@ function collectLocal() {
   sortMoments();
 }
 
+function cloudErrorMessage(err) {
+  const code = err && (err.code || err.message || "");
+  if (String(code).includes("permission-denied")) {
+    return "Sin permiso: publica las reglas nuevas de Firestore";
+  }
+  if (String(code).includes("unauthenticated") || String(code).includes("auth/")) {
+    return "Auth falló: activa Anónimo y el dominio github.io";
+  }
+  return "No se pudo sincronizar: " + (err && err.message ? err.message : "error");
+}
+
+function isRemoteNewer(remoteUpdatedAt) {
+  if (!remoteUpdatedAt) return false;
+  if (!state.updatedAt && !lastRemoteUpdatedAt) return true;
+  return remoteUpdatedAt !== state.updatedAt && remoteUpdatedAt !== lastRemoteUpdatedAt;
+}
+
 async function pushToCloud() {
-  if (!cloudReady) throw new Error("Cloud no listo");
+  if (!cloudReady) throw new Error("Cloud no listo — espera a Conectando…");
   collectLocal();
   setStatus("Sincronizando…");
 
   const updatedAt = new Date().toISOString();
   const payload = {
-    letterHtml: state.letterHtml,
-    moments: state.moments,
+    letterHtml: state.letterHtml || "<p></p>",
+    moments: state.moments.map((m) => ({
+      date: String(m.date || ""),
+      text: String(m.text || ""),
+    })),
     updatedAt,
   };
   if (state.song) payload.song = state.song;
@@ -702,15 +734,18 @@ async function pushToCloud() {
   await setDoc(ano3Ref, payload);
   state.updatedAt = updatedAt;
   lastRemoteUpdatedAt = updatedAt;
+  pendingRemote = null;
   saveMeta();
   setStatus("Guardado y sincronizado ✓");
 }
 
-async function applyRemoteData(data) {
+async function applyRemoteData(data, force) {
   if (!data) return;
-  if (data.updatedAt && data.updatedAt === lastRemoteUpdatedAt) return;
-  if (editing) {
-    setStatus("Cambios en la nube (guarda cuando termines)");
+  if (!force && !isRemoteNewer(data.updatedAt)) return;
+
+  if (editing && !force) {
+    pendingRemote = data;
+    setStatus("Hay cambios nuevos — sal de Editar o pulsa Guardar");
     return;
   }
 
@@ -722,14 +757,27 @@ async function applyRemoteData(data) {
     state.song = data.song ? normalizeSong(data.song) : null;
     state.updatedAt = data.updatedAt || "";
     lastRemoteUpdatedAt = state.updatedAt;
+    pendingRemote = null;
     saveMeta();
 
     renderLetter();
     renderMoments();
     renderMusic();
-    setStatus("Actualizado desde la nube");
+    setStatus("Actualizado desde la nube ✓");
   } finally {
     applyingRemote = false;
+  }
+}
+
+async function pullFromCloud() {
+  if (!cloudReady) return;
+  try {
+    const snap = await getDoc(ano3Ref);
+    if (!snap.exists()) return;
+    await applyRemoteData(snap.data(), false);
+  } catch (err) {
+    console.error(err);
+    setStatus(cloudErrorMessage(err));
   }
 }
 
@@ -738,19 +786,20 @@ function startCloudSync() {
   unsubSnapshot = onSnapshot(
     ano3Ref,
     (snap) => {
+      cloudReady = true;
       if (!snap.exists()) {
-        cloudReady = true;
-        setStatus(editing ? "Modo edición" : "Listo para sincronizar");
+        setStatus(editing ? "Modo edición — pulsa Guardar para enviar" : "Listo para sincronizar");
         return;
       }
-      cloudReady = true;
-      applyRemoteData(snap.data()).catch(() =>
-        setStatus("Error al aplicar cambios remotos")
-      );
+      applyRemoteData(snap.data()).catch((err) => {
+        console.error(err);
+        setStatus("Error al aplicar cambios remotos");
+      });
     },
     (err) => {
       console.error(err);
-      setStatus("Error de sincronización");
+      cloudReady = false;
+      setStatus(cloudErrorMessage(err));
     }
   );
 }
@@ -813,8 +862,7 @@ btnSave.addEventListener("click", async () => {
     console.error(err);
     collectLocal();
     saveMeta();
-    setStatus("Guardado local (revisa Auth/Firestore/Storage)");
-    setEditing(false);
+    setStatus(cloudErrorMessage(err));
   }
 });
 btnExport.addEventListener("click", () => {
@@ -825,6 +873,17 @@ btnImport.addEventListener("change", () => {
   btnImport.value = "";
   if (!file) return;
   importBackup(file).catch(() => setStatus("Error al importar"));
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && cloudReady && !editing && !applyingRemote) {
+    pullFromCloud();
+  }
+});
+window.addEventListener("focus", () => {
+  if (cloudReady && !editing && !applyingRemote) {
+    pullFromCloud();
+  }
 });
 
 btnAddMoment.addEventListener("click", () => {

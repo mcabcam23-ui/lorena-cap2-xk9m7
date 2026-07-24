@@ -32,12 +32,12 @@ service cloud.firestore {
         && s.artist.size() <= 200
         && s.preview is string
         && s.preview.size() > 0
-        && s.preview.size() <= 500
+        && s.preview.size() <= 2000
         && s.spotify is string
         && s.spotify.size() > 0
-        && s.spotify.size() <= 500
+        && s.spotify.size() <= 2000
         && s.cover is string
-        && s.cover.size() <= 500;
+        && s.cover.size() <= 2000;
     }
 
     function isValidAno3() {
